@@ -1,0 +1,6 @@
+name: MiniAresActionBar
+version: '${version}'
+
+main: net.santi.miniAresActionBar.Main
+api-version: '26.2'
+load: POSTWORLD
