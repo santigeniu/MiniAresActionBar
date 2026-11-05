@@ -57,6 +57,16 @@ class BalanceCheckTask(private val plugin: Main) : BukkitRunnable() {
             val goal = levelMetrics.levelGoal(level)
             val percent = LevelFormatter.xpPercent(exp, goal)
 
+            // Та же логика, что и у dollarAnimStart/aresAnimStart: запускаем анимацию
+            // иконки опыта, только если значение реально выросло (не на первом опросе
+            // после захода игрока). Сравниваем именно "сырой" exp, а не percent - percent
+            // падает к 0 при левел-апе (сбрасывается прогресс внутри нового уровня), и
+            // такое падение не должно трактоваться как "опыт пропал".
+            if (!state.lastExpRaw.isNaN() && exp > state.lastExpRaw) {
+                state.levelIconAnimStart = now
+            }
+            state.lastExpRaw = exp
+
             state.level = level
             state.xpPercent = percent
 
