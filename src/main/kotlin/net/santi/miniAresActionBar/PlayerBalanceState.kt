@@ -7,5 +7,9 @@ data class PlayerBalanceState(
     var aresFormatted: String = "0",
     // -1L значит "анимация не идёт", иначе System.currentTimeMillis() момента старта
     var dollarAnimStart: Long = -1L,
-    var aresAnimStart: Long = -1L
+    var aresAnimStart: Long = -1L,
+
+    // --- Уровень сервера (бывший костыль через PlaceholderAPI JS-expansion) ---
+    var level: Int = 0,
+    var xpPercent: Double = 0.0
 )

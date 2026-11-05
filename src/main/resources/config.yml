@@ -1,4 +1,5 @@
 # Как часто проверять баланс игрока и сравнивать с прошлым значением (в тиках, 20 = 1 сек)
+# (теперь тут же опрашивается и уровень/опыт - см. секцию level ниже)
 balance-check-interval-ticks: 10
 
 # Как часто перерисовывать actionbar (в тиках). Чем меньше - тем плавнее анимация иконки.
@@ -79,3 +80,34 @@ dollar-digit-font: actionbar_1
 
 # Шрифт цифр для баланса аресов
 ares-digit-font: actionbar_2
+
+# --- Уровень сервера (раньше - костыль через PlaceholderAPI JS-expansion level.js) ---
+# Шкала опыта: новый шрифт assets/<namespace>/font/actionbar_3.json
+# (51 кадр, chars A..Z,a..y -> font/xp/0.png..100.png, шаг 2% на кадр).
+# Число уровня и его иконка ('z') переиспользуют уже существующий
+# digit-font (actionbar_1), т.к. иконка уровня (font/level_icon.png) и так
+# лежит там же, под символом 'z'.
+level:
+  enabled: true
+  font-namespace: minecraft
+  digit-font: actionbar_1
+  xp-bar-font: actionbar_3
+  icon-char: "z"
+
+  # Ширина одного глифа цифры уровня в px - аналог "9" в getWidth() из
+  # старого level.js (getWidth(text) = text.length * 9 - 1).
+  digit-width: 9.0
+
+  # Геометрия блока - 1:1 перенос констант из result() старого level.js.
+  # Подгони в игре под реальную картинку, как с shift-calibration выше.
+  bar-width: 30.0
+  icon-width: 6.0
+  icon-spacing: 1.0
+  margin: -6.0
+  bar-nudge: -1.5
+
+  # Сдвиг влево группы "число уровня + иконка" ЦЕЛИКОМ, в пикселях - шкалу
+  # опыта не трогает. Значение всегда положительное - направление "влево"
+  # задано самой формулой, а не знаком числа (как posSpace/negSpace в
+  # money.js/level.js).
+  digit-nudge: 0.0

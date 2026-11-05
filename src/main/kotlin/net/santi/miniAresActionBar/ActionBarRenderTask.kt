@@ -13,6 +13,7 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
     private val dollarFrames = ('L'..'V').toList()
 
     private val metrics = GlyphMetrics(plugin)
+    private val levelMetrics = LevelMetrics(plugin)
 
     override fun run() {
         val onlinePlayers = Bukkit.getOnlinePlayers()
@@ -62,14 +63,18 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
                 isAres = true
             )
 
-            val component = Component.text()
+            val componentBuilder = Component.text()
                 .append(Component.text(leadingPad))
                 .append(dollarBlock)
                 .append(aresBlock)
-                .append(Component.text(trailingPad))
-                .build()
 
-            player.sendActionBar(component)
+            if (levelMetrics.enabled()) {
+                componentBuilder.append(buildLevelBlock(state.level, state.xpPercent))
+            }
+
+            componentBuilder.append(Component.text(trailingPad))
+
+            player.sendActionBar(componentBuilder.build())
         }
     }
 
@@ -96,6 +101,59 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
             .append(glyphText(digits, digitFont))
             .append(Component.text(iconChar.toString()).font(iconFont))
             .append(Component.text(SpaceGlyphs.negSpace(calibration)))
+            .build()
+    }
+
+    /**
+     * Блок уровня сервера: шкала опыта + число уровня + иконка.
+     * Дословный перенос result() из старого level.js (JS-expansion PlaceholderAPI)
+     * на Component-API и SpaceGlyphs/LevelMetrics.
+     *
+     * Важно: в оригинальном level.js getPosSpace()/getNegSpace() НЕ смотрят на знак
+     * входного числа (внутри всегда abs()) - направление сдвига всегда то, которое
+     * диктует конкретный вызов (posSpace -> вправо, negSpace -> влево), а не знак
+     * переданной величины. Поэтому здесь используются SpaceGlyphs.posSpace()/negSpace()
+     * напрямую, а не SpaceGlyphs.shift() (который выбирает направление по знаку).
+     */
+    private fun buildLevelBlock(level: Int, xpPercent: Double): Component {
+        val lvlText = level.toString()
+        val barChar = LevelBarGlyphs.barChar(xpPercent)
+        val icon = levelMetrics.iconChar()
+        val digitFont = levelMetrics.digitFont()
+
+        val iconSpacing = levelMetrics.iconSpacing()
+        val iconWidth = levelMetrics.iconWidth()
+        val margin = levelMetrics.margin()
+        val barNudge = levelMetrics.barNudge()
+        val barWidth = levelMetrics.barWidth()
+        val digitNudge = levelMetrics.digitNudge()
+
+        val totalTextWidth = levelMetrics.textWidth(lvlText) + iconSpacing + iconWidth
+        val centerOffset = (barWidth - totalTextWidth) / 2.0
+
+        // Курсор после печати шкалы и возврата (negSpace(barWidth+barNudge))
+        // оказывается на X0+margin (X0 - точка сразу после ares-блока), а не
+        // на X0 - это и есть базовая точка, от которой считается centerOffset
+        // ниже. Финальный negSpace должен вернуть курсор обратно в X0, поэтому
+        // из него нужно вычесть digitNudge - ровно столько, сколько "украл"
+        // лишний negSpace(digitNudge) перед группой цифр+иконки.
+        val finalReturn = margin + centerOffset + totalTextWidth - digitNudge
+
+        return Component.text()
+            // Шкала опыта, со своим локальным сдвигом (barNudge) - digitNudge
+            // её НЕ затрагивает, поэтому шкала остаётся на месте.
+            .append(Component.text(SpaceGlyphs.posSpace(margin + barNudge)))
+            .append(Component.text(barChar.toString()).font(levelMetrics.xpBarFont()))
+            .append(Component.text(SpaceGlyphs.negSpace(barWidth + barNudge)))
+            // Группа "число уровня + иконка" целиком сдвигается влево на
+            // digitNudge, отцентрованная под шкалой величиной centerOffset.
+            .append(Component.text(SpaceGlyphs.negSpace(digitNudge)))
+            .append(Component.text(SpaceGlyphs.posSpace(centerOffset)))
+            .append(glyphText(lvlText, digitFont))
+            .append(Component.text(SpaceGlyphs.posSpace(iconSpacing)))
+            .append(Component.text(icon.toString()).font(digitFont))
+            // Полный возврат в ноль для корректной работы следующих блоков
+            .append(Component.text(SpaceGlyphs.negSpace(finalReturn)))
             .build()
     }
 

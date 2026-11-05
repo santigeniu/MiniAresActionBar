@@ -38,6 +38,16 @@ class BalanceCheckTask(private val plugin: Main) : BukkitRunnable() {
 
             state.dollarsFormatted = BalanceFormatter.format(rawDollars)
             state.aresFormatted = BalanceFormatter.format(rawAres)
+
+            // --- Уровень сервера (раньше - js-expansion level.js в PlaceholderAPI) ---
+            val rawLevel = PlaceholderHook.resolve(player, "%lamglevels_level%")
+            val rawExp = PlaceholderHook.resolve(player, "%lamglevels_exp_progress%")
+
+            val level = LevelFormatter.parseLevel(rawLevel)
+            val exp = LevelFormatter.parseExp(rawExp)
+
+            state.level = level
+            state.xpPercent = LevelFormatter.xpPercent(level, exp)
         }
     }
 }
