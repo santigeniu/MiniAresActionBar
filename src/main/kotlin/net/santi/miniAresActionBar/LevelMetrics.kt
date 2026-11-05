@@ -17,6 +17,9 @@ class LevelMetrics(private val plugin: Main) {
 
     fun enabled(): Boolean = plugin.config.getBoolean("level.enabled", true)
 
+    /** Диагностика: раз в 5 сек пишет в консоль сырые значения плейсхолдеров уровня/опыта. */
+    fun debug(): Boolean = plugin.config.getBoolean("level.debug", false)
+
     fun fontNamespace(): String = plugin.config.getString("level.font-namespace", "minecraft")!!
 
     fun digitFont(): Key =
@@ -53,5 +56,24 @@ class LevelMetrics(private val plugin: Main) {
     fun textWidth(text: String): Double {
         if (text.isEmpty()) return 0.0
         return text.length * digitWidth() - 1.0
+    }
+
+    // --- Реальная формула требования опыта (НЕ формула из старого level.js!) ---
+    // Старая формула (level+1)*70 была перенесена из JS-костыля как есть и не
+    // совпадает с фактической системой опыта (посчитано по факту: для L>=1
+    // требование - L*70, для L=0 - отдельная константа 25, не укладывающаяся
+    // в линейный прирост). Вынесено в конфиг на случай, если эти цифры тоже
+    // окажутся неточными - тогда не придётся пересобирать плагин.
+
+    /** Прирост требования опыта на уровень, начиная со 2-го уровня (L>=1): goal = L * increment. */
+    fun expIncrement(): Double = plugin.config.getDouble("level.exp.increment", 70.0)
+
+    /** Требование опыта для самого первого уровня (L=0) - особый случай, не укладывается в линейный прирост. */
+    fun firstLevelGoal(): Double = plugin.config.getDouble("level.exp.first-level-goal", 25.0)
+
+    /** Сколько опыта нужно набрать на уровне level, чтобы перейти на level+1. */
+    fun levelGoal(level: Int): Double {
+        if (level <= 0) return firstLevelGoal()
+        return level * expIncrement()
     }
 }
