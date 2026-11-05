@@ -13,10 +13,10 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
     private val dollarFrames = ('L'..'V').toList()
 
     // Кадры анимации иконки получения опыта: a..p -> others/exp_anim/a1..d4.png (16 кадров).
-    // a (a1.png) - статичный кадр, остальные проигрываются при росте опыта.
     private val expFrames = ('a'..'p').toList()
 
-    // Статичная иконка уровня в покое: 'z' из actionbar_1.json (font/level_icon.png).
+    // Статичная иконка уровня: 'z' из actionbar_1.json (font/level_icon.png).
+    // Рисуется ВСЕГДА, кадры a..p накладываются поверх неё во время анимации.
     private val levelIconStaticChar = 'z'
 
     private val metrics = GlyphMetrics(plugin)
@@ -35,10 +35,6 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
         val animDurationMs = plugin.config.getLong("animation-duration-ms", 2000L)
 
         // --- Сдвиг actionbar влево обычными пробелами ---
-        // Ванильный actionbar центрируется по ширине текста. Чтобы визуально
-        // увести контент ВЛЕВО, добавляем пробелы В КОНЕЦ строки: они расширяют
-        // строку справа, и точка центрирования уезжает вправо, а видимый
-        // контент - влево. Если нужно наоборот (вправо) - увеличь leading-spaces.
         val leadingSpaces = plugin.config.getInt("actionbar-align.leading-spaces", 0)
         val trailingSpaces = plugin.config.getInt("actionbar-align.trailing-spaces", 40)
 
@@ -53,22 +49,15 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
             val aresIcon = frameFor(aresFrames, state.aresAnimStart, now, animDurationMs)
             val dollarIcon = frameFor(dollarFrames, state.dollarAnimStart, now, animDurationMs)
 
-            // Иконка уровня: при росте опыта проигрываем a..p из actionbar.json,
-            // в покое рисуем статичный 'z' из actionbar_1.json.
+            // Кадр анимации опыта: null, если анимация не идёт (тогда поверх 'z' ничего не рисуем).
             val levelExpDuration = levelMetrics.expAnimationDurationMs()
-            val levelIcon: Char
-            val levelIconFont: Key
-            if (isAnimating(state.levelIconAnimStart, now, levelExpDuration)) {
-                levelIcon = frameFor(expFrames, state.levelIconAnimStart, now, levelExpDuration)
-                levelIconFont = iconFont
-            } else {
-                levelIcon = levelIconStaticChar
-                levelIconFont = levelIconStaticFont
-            }
+            val animIconChar: Char? =
+                if (isAnimating(state.levelIconAnimStart, now, levelExpDuration)) {
+                    frameFor(expFrames, state.levelIconAnimStart, now, levelExpDuration)
+                } else {
+                    null
+                }
 
-            // Доллары печатаются первыми (верхний блок), аресы вторыми (нижний) -
-            // вертикальное разведение даёт ascent в actionbar_1/2.json (уже разный),
-            // а горизонтальное выравнивание под одну X - метод money.js ниже.
             val dollarBlock = buildBlock(
                 iconChar = dollarIcon,
                 digits = state.dollarsFormatted,
@@ -91,7 +80,16 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
                 .append(aresBlock)
 
             if (levelMetrics.enabled()) {
-                componentBuilder.append(buildLevelBlock(state.level, state.xpPercent, levelIcon, levelIconFont))
+                componentBuilder.append(
+                    buildLevelBlock(
+                        level = state.level,
+                        xpPercent = state.xpPercent,
+                        levelIconChar = levelIconStaticChar,
+                        levelIconFont = levelIconStaticFont,
+                        animIconChar = animIconChar,
+                        animIconFont = iconFont
+                    )
+                )
             }
 
             componentBuilder.append(Component.text(trailingPad))
@@ -100,13 +98,6 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
         }
     }
 
-    /**
-     * Метод из money.js: shift(калибровка) + negSpace(ширинаБлока) + блок + negSpace(калибровка).
-     * За счёт этого курсор после блока возвращается ровно в ту же X-точку, с которой блок
-     * начал печататься - следующий блок (например ares после dollars) стартует с того же X.
-     *
-     * Цвет нигде не задаётся - рендерится цветом по умолчанию (белый).
-     */
     private fun buildBlock(
         iconChar: Char,
         digits: String,
@@ -127,20 +118,22 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
     }
 
     /**
-     * Блок уровня сервера: шкала опыта + число уровня + иконка.
-     * Дословный перенос result() из старого level.js (JS-expansion PlaceholderAPI)
-     * на Component-API и SpaceGlyphs/LevelMetrics.
+     * Блок уровня: шкала опыта + число уровня + иконка.
      *
-     * Важно: в оригинальном level.js getPosSpace()/getNegSpace() НЕ смотрят на знак
-     * входного числа (внутри всегда abs()) - направление сдвига всегда то, которое
-     * диктует конкретный вызов (posSpace -> вправо, negSpace -> влево), а не знак
-     * переданной величины. Поэтому здесь используются SpaceGlyphs.posSpace()/negSpace()
-     * напрямую, а не SpaceGlyphs.shift() (который выбирает направление по знаку).
-     *
-     * iconChar/iconFont - в покое статичный 'z' из actionbar_1.json, при росте опыта -
-     * текущий кадр анимации a..p из actionbar.json (см. run()).
+     * Иконка уровня - это ВСЕГДА 'z' из actionbar_1.json (font/level_icon.png).
+     * Когда идёт анимация опыта, поверх 'z' дополнительно печатается кадр из
+     * a..p (actionbar.json): курсор возвращается на ширину иконки, печатается
+     * кадр, и курсор снова возвращается - в итоге группа занимает ровно ширину
+     * одной иконки, а 'z' остаётся видимой под кадром.
      */
-    private fun buildLevelBlock(level: Int, xpPercent: Double, iconChar: Char, iconFont: Key): Component {
+    private fun buildLevelBlock(
+        level: Int,
+        xpPercent: Double,
+        levelIconChar: Char,
+        levelIconFont: Key,
+        animIconChar: Char?,
+        animIconFont: Key
+    ): Component {
         val lvlText = level.toString()
         val barChar = LevelBarGlyphs.barChar(xpPercent)
         val digitFont = levelMetrics.digitFont()
@@ -152,47 +145,45 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
         val barWidth = levelMetrics.barWidth()
         val digitNudge = levelMetrics.digitNudge()
 
+        // Ширина группы "иконка" = одна иконка: кадр накладывается поверх 'z'
+        // и курсор после наложения возвращается в исходную точку.
         val totalTextWidth = levelMetrics.textWidth(lvlText) + iconSpacing + iconWidth
         val centerOffset = (barWidth - totalTextWidth) / 2.0
 
-        // Курсор после печати шкалы и возврата (negSpace(barWidth+barNudge))
-        // оказывается на X0+margin (X0 - точка сразу после ares-блока), а не
-        // на X0 - это и есть базовая точка, от которой считается centerOffset
-        // ниже. Финальный negSpace должен вернуть курсор обратно в X0, поэтому
-        // из него нужно вычесть digitNudge - ровно столько, сколько "украл"
-        // лишний negSpace(digitNudge) перед группой цифр+иконки.
         val finalReturn = margin + centerOffset + totalTextWidth - digitNudge
 
-        return Component.text()
-            // Шкала опыта, со своим локальным сдвигом (barNudge) - digitNudge
-            // её НЕ затрагивает, поэтому шкала остаётся на месте.
+        val builder = Component.text()
+            // Шкала опыта, со своим локальным сдвигом (barNudge).
             .append(Component.text(SpaceGlyphs.posSpace(margin + barNudge)))
             .append(Component.text(barChar.toString()).font(levelMetrics.xpBarFont()))
             .append(Component.text(SpaceGlyphs.negSpace(barWidth + barNudge)))
-            // Группа "число уровня + иконка" целиком сдвигается влево на
-            // digitNudge, отцентрованная под шкалой величиной centerOffset.
+            // Группа "число уровня + иконка".
             .append(Component.text(SpaceGlyphs.negSpace(digitNudge)))
             .append(Component.text(SpaceGlyphs.posSpace(centerOffset)))
             .append(glyphText(lvlText, digitFont))
             .append(Component.text(SpaceGlyphs.posSpace(iconSpacing)))
-            .append(Component.text(iconChar.toString()).font(iconFont))
-            // Полный возврат в ноль для корректной работы следующих блоков
-            .append(Component.text(SpaceGlyphs.negSpace(finalReturn)))
-            .build()
+
+        // Статичная 'z' рисуется ВСЕГДА.
+        builder.append(Component.text(levelIconChar.toString()).font(levelIconFont))
+
+        // Анимация: возвращаем курсор на ширину иконки, печатаем кадр поверх 'z',
+        // затем снова возвращаем курсор - группа остаётся шириной в одну иконку.
+        if (animIconChar != null) {
+            builder.append(Component.text(SpaceGlyphs.negSpace(iconWidth)))
+            builder.append(Component.text(animIconChar.toString()).font(animIconFont))
+            builder.append(Component.text(SpaceGlyphs.negSpace(iconWidth)))
+        }
+
+        builder.append(Component.text(SpaceGlyphs.negSpace(finalReturn)))
+
+        return builder.build()
     }
 
-    /**
-     * true, если анимация запущена и ещё не истекла (animStart >= 0 и прошло меньше durationMs).
-     */
     private fun isAnimating(animStart: Long, now: Long, durationMs: Long): Boolean {
         if (animStart < 0) return false
         return now - animStart < durationMs
     }
 
-    /**
-     * Возвращает кадр для текущего момента: если анимация не запущена или уже истекла -
-     * первый кадр (статичная иконка), иначе кадр, соответствующий прошедшей доле времени анимации.
-     */
     private fun frameFor(frames: List<Char>, animStart: Long, now: Long, durationMs: Long): Char {
         if (animStart < 0) return frames[0]
 
