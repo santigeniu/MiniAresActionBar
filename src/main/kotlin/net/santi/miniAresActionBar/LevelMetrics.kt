@@ -22,7 +22,24 @@ class LevelMetrics(private val plugin: Main) {
 
     fun barWidth(): Double = plugin.config.getDouble("level.bar-width", 30.0)
 
-    fun iconWidth(): Double = plugin.config.getDouble("level.icon-width", 6.0)
+    // Ширина статичной иконки уровня 'z' (font/level_icon.png) в px.
+    // Именно на неё возвращается курсор после печати 'z' при наложении кадра анимации.
+    fun levelIconWidth(): Double = plugin.config.getDouble("level.level-icon-width", 7.0)
+
+    // Ширина кадра анимации a..p (others/exp_anim/*.png) в px.
+    // На неё возвращается курсор после печати кадра, чтобы группа "иконка"
+    // занимала ровно ширину одной иконки.
+    fun animIconWidth(): Double = plugin.config.getDouble("level.anim-icon-width", 2.0)
+
+    // Старое значение оставлено для совместимости с buildLevelBlock(), где оно
+    // используется как ширина группы "иконка" в расчётах centerOffset. По умолчанию
+    // теперь берётся из level-icon-width (видимая группа = ширина 'z').
+    fun iconWidth(): Double =
+        if (plugin.config.contains("level.icon-width")) {
+            plugin.config.getDouble("level.icon-width")
+        } else {
+            levelIconWidth()
+        }
 
     fun iconSpacing(): Double = plugin.config.getDouble("level.icon-spacing", 1.0)
 

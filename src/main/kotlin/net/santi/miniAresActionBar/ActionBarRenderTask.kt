@@ -34,7 +34,6 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
         val levelIconStaticFont = Key.key(namespace, "actionbar_1")
         val animDurationMs = plugin.config.getLong("animation-duration-ms", 2000L)
 
-        // --- Сдвиг actionbar влево обычными пробелами ---
         val leadingSpaces = plugin.config.getInt("actionbar-align.leading-spaces", 0)
         val trailingSpaces = plugin.config.getInt("actionbar-align.trailing-spaces", 40)
 
@@ -49,7 +48,7 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
             val aresIcon = frameFor(aresFrames, state.aresAnimStart, now, animDurationMs)
             val dollarIcon = frameFor(dollarFrames, state.dollarAnimStart, now, animDurationMs)
 
-            // Кадр анимации опыта: null, если анимация не идёт (тогда поверх 'z' ничего не рисуем).
+            // Кадр анимации опыта: null, если анимация не идёт.
             val levelExpDuration = levelMetrics.expAnimationDurationMs()
             val animIconChar: Char? =
                 if (isAnimating(state.levelIconAnimStart, now, levelExpDuration)) {
@@ -120,11 +119,12 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
     /**
      * Блок уровня: шкала опыта + число уровня + иконка.
      *
-     * Иконка уровня - это ВСЕГДА 'z' из actionbar_1.json (font/level_icon.png).
-     * Когда идёт анимация опыта, поверх 'z' дополнительно печатается кадр из
-     * a..p (actionbar.json): курсор возвращается на ширину иконки, печатается
-     * кадр, и курсор снова возвращается - в итоге группа занимает ровно ширину
-     * одной иконки, а 'z' остаётся видимой под кадром.
+     * 'z' рисуется ВСЕГДА. Во время анимации поверх неё печатается кадр a..p:
+     *   печать 'z'                    → курсор +levelIconWidth
+     *   negSpace(levelIconWidth)      → курсор назад на X_icon
+     *   печать кадра a..p             → курсор +animIconWidth
+     *   negSpace(animIconWidth)       → курсор назад на X_icon
+     * В итоге группа занимает ровно ширину 'z' (levelIconWidth), курсор не уезжает.
      */
     private fun buildLevelBlock(
         level: Int,
@@ -139,21 +139,22 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
         val digitFont = levelMetrics.digitFont()
 
         val iconSpacing = levelMetrics.iconSpacing()
-        val iconWidth = levelMetrics.iconWidth()
+        // Видимая ширина группы "иконка" = ширина 'z', т.к. кадр лежит поверх неё.
+        val groupIconWidth = levelMetrics.levelIconWidth()
+        val levelIconWidth = levelMetrics.levelIconWidth()
+        val animIconWidth = levelMetrics.animIconWidth()
         val margin = levelMetrics.margin()
         val barNudge = levelMetrics.barNudge()
         val barWidth = levelMetrics.barWidth()
         val digitNudge = levelMetrics.digitNudge()
 
-        // Ширина группы "иконка" = одна иконка: кадр накладывается поверх 'z'
-        // и курсор после наложения возвращается в исходную точку.
-        val totalTextWidth = levelMetrics.textWidth(lvlText) + iconSpacing + iconWidth
+        val totalTextWidth = levelMetrics.textWidth(lvlText) + iconSpacing + groupIconWidth
         val centerOffset = (barWidth - totalTextWidth) / 2.0
 
         val finalReturn = margin + centerOffset + totalTextWidth - digitNudge
 
         val builder = Component.text()
-            // Шкала опыта, со своим локальным сдвигом (barNudge).
+            // Шкала опыта.
             .append(Component.text(SpaceGlyphs.posSpace(margin + barNudge)))
             .append(Component.text(barChar.toString()).font(levelMetrics.xpBarFont()))
             .append(Component.text(SpaceGlyphs.negSpace(barWidth + barNudge)))
@@ -166,12 +167,12 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
         // Статичная 'z' рисуется ВСЕГДА.
         builder.append(Component.text(levelIconChar.toString()).font(levelIconFont))
 
-        // Анимация: возвращаем курсор на ширину иконки, печатаем кадр поверх 'z',
-        // затем снова возвращаем курсор - группа остаётся шириной в одну иконку.
+        // Анимация: возврат по реальной ширине 'z' и по реальной ширине кадра.
+        // Оба negSpace разные - это ключ к тому, чтобы курсор не уезжал.
         if (animIconChar != null) {
-            builder.append(Component.text(SpaceGlyphs.negSpace(iconWidth)))
+            builder.append(Component.text(SpaceGlyphs.negSpace(levelIconWidth)))
             builder.append(Component.text(animIconChar.toString()).font(animIconFont))
-            builder.append(Component.text(SpaceGlyphs.negSpace(iconWidth)))
+            builder.append(Component.text(SpaceGlyphs.negSpace(animIconWidth)))
         }
 
         builder.append(Component.text(SpaceGlyphs.negSpace(finalReturn)))
