@@ -6,11 +6,25 @@ import org.bukkit.Bukkit
 
 class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.BukkitRunnable() {
 
-    // Кадры анимации иконки ареса: A..K -> others/ares_anim/0..10.png. A (0.png) - статичный кадр.
-    private val aresFrames = ('A'..'K').toList()
+    // Кадры анимации иконки ареса: A..K -> others/ares_anim/0..10.png.
+    // A (0.png) - статичный кадр, в анимационный цикл НЕ входит.
+    // Порядок проигрывания задан явно (номера png-файлов):
+    // 1, 2, 3, 8, 9, 10, 8, 9, 10, 1, 2, 3, 4, 5
+    //   B  C  D  I  J  K   I  J  K   B  C  D  E  F
+    private val aresFrames = listOf(
+        'B', 'C', 'D', 'I', 'J', 'K', 'I', 'J', 'K', 'B', 'C', 'D', 'E', 'F'
+    )
+    private val aresStaticFrame = 'A' // 0.png
 
-    // Кадры анимации иконки доллара: L..V -> others/dollar_anim/0..10.png. L (0.png) - статичный кадр.
-    private val dollarFrames = ('L'..'V').toList()
+    // Кадры анимации иконки доллара: L..V -> others/dollar_anim/0..10.png.
+    // L (0.png) - статичный кадр, в анимационный цикл НЕ входит.
+    // Порядок проигрывания задан явно (номера png-файлов):
+    // 1, 2, 3, 8, 9, 10, 8, 9, 10, 1, 2, 3, 4, 5
+    //   M  N  O  T  U  V   T  U  V   M  N  O  P  Q
+    private val dollarFrames = listOf(
+        'M', 'N', 'O', 'T', 'U', 'V', 'T', 'U', 'V', 'M', 'N', 'O', 'P', 'Q'
+    )
+    private val dollarStaticFrame = 'L' // 0.png
 
     // Кадры анимации иконки получения опыта: a..p -> others/exp_anim/a1..d4.png (16 кадров).
     private val expFrames = ('a'..'p').toList()
@@ -44,14 +58,14 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
         for (player in onlinePlayers) {
             val state = BalanceStateManager.get(player.uniqueId)
 
-            val aresIcon = frameFor(aresFrames, state.aresAnimStart, now, animDurationMs)
-            val dollarIcon = frameFor(dollarFrames, state.dollarAnimStart, now, animDurationMs)
+            val aresIcon = frameFor(aresFrames, aresStaticFrame, state.aresAnimStart, now, animDurationMs)
+            val dollarIcon = frameFor(dollarFrames, dollarStaticFrame, state.dollarAnimStart, now, animDurationMs)
 
             // Кадр анимации опыта: null, если анимация не идёт.
             val levelExpDuration = levelMetrics.expAnimationDurationMs()
             val animIconChar: Char? =
                 if (isAnimating(state.levelIconAnimStart, now, levelExpDuration)) {
-                    frameFor(expFrames, state.levelIconAnimStart, now, levelExpDuration)
+                    frameFor(expFrames, expFrames[0], state.levelIconAnimStart, now, levelExpDuration)
                 } else {
                     null
                 }
@@ -204,13 +218,20 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
         return now - animStart < durationMs
     }
 
-    private fun frameFor(frames: List<Char>, animStart: Long, now: Long, durationMs: Long): Char {
-        if (animStart < 0) return frames[0]
+    private fun frameFor(
+        frames: List<Char>,
+        staticFrame: Char,
+        animStart: Long,
+        now: Long,
+        durationMs: Long
+    ): Char {
+        if (animStart < 0) return staticFrame
 
         val elapsed = now - animStart
-        if (elapsed >= durationMs) return frames[0]
+        if (elapsed >= durationMs) return staticFrame
 
-        val stepMs = durationMs / frames.size
+        if (durationMs <= 0L || frames.isEmpty()) return staticFrame
+        val stepMs = (durationMs / frames.size).coerceAtLeast(1L)
         val index = (elapsed / stepMs).toInt().coerceIn(0, frames.size - 1)
         return frames[index]
     }
