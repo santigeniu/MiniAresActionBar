@@ -22,7 +22,11 @@ class GlyphMetrics(private val plugin: Main) {
         for (c in text) {
             w += when {
                 c == '.' -> dotWidth()
-                c == 'K' || c == 'M' -> suffixWidth()
+                // K/M/B - все три суффикса одной ширины (glyph-widths.suffix).
+                // Раньше 'B' сюда не попадал и считался как 0 - из-за этого при
+                // балансе от миллиарда иконка "съезжала", т.к. blockWidth()
+                // для таких длин обычно не калибруется вручную отдельно.
+                c == 'K' || c == 'M' || c == 'B' -> suffixWidth()
                 c.isDigit() -> digitWidth()
                 else -> 0.0
             }

@@ -23,13 +23,19 @@ class LevelMetrics(private val plugin: Main) {
     fun barWidth(): Double = plugin.config.getDouble("level.bar-width", 30.0)
 
     // Ширина статичной иконки уровня 'z' (font/level_icon.png) в px.
-    // Именно на неё возвращается курсор после печати 'z' при наложении кадра анимации.
     fun levelIconWidth(): Double = plugin.config.getDouble("level.level-icon-width", 7.0)
 
     // Ширина кадра анимации a..p (others/exp_anim/*.png) в px.
-    // На неё возвращается курсор после печати кадра, чтобы группа "иконка"
-    // занимала ровно ширину одной иконки.
+    // На неё возвращается курсор после печати кадра поверх шкалы опыта,
+    // чтобы анимация не сдвигала остальной текст actionbar.
     fun animIconWidth(): Double = plugin.config.getDouble("level.anim-icon-width", 2.0)
+
+    // Горизонтальный сдвиг (px) анимации получения опыта (кадры a..p) относительно
+    // начала шкалы опыта (xp-bar). Раньше кадр анимации накладывался на иконку
+    // уровня ('z'), теперь рисуется НАД шкалой/баром - двигай это значение в
+    // игре (config.yml: level.anim-icon-offset-x), чтобы поставить иконку в
+    // нужное место над баром по горизонтали.
+    fun animIconOffsetX(): Double = plugin.config.getDouble("level.anim-icon-offset-x", 0.0)
 
     // Старое значение оставлено для совместимости с buildLevelBlock(), где оно
     // используется как ширина группы "иконка" в расчётах centerOffset. По умолчанию

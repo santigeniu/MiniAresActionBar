@@ -16,7 +16,6 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
     private val expFrames = ('a'..'p').toList()
 
     // Статичная иконка уровня: 'z' из actionbar_1.json (font/level_icon.png).
-    // Рисуется ВСЕГДА, кадры a..p накладываются поверх неё во время анимации.
     private val levelIconStaticChar = 'z'
 
     private val metrics = GlyphMetrics(plugin)
@@ -119,12 +118,21 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
     /**
      * Блок уровня: шкала опыта + число уровня + иконка.
      *
-     * 'z' рисуется ВСЕГДА. Во время анимации поверх неё печатается кадр a..p:
-     *   печать 'z'                    → курсор +levelIconWidth
-     *   negSpace(levelIconWidth)      → курсор назад на X_icon
-     *   печать кадра a..p             → курсор +animIconWidth
-     *   negSpace(animIconWidth)       → курсор назад на X_icon
-     * В итоге группа занимает ровно ширину 'z' (levelIconWidth), курсор не уезжает.
+     * 'z' (иконка уровня) рисуется ВСЕГДА и больше ничем не перекрывается -
+     * анимация получения опыта (кадры a..p) теперь рисуется ОТДЕЛЬНО, прямо
+     * над шкалой опыта (barChar), а не поверх 'z':
+     *
+     *   печать barChar                       → курсор +barWidth
+     *   posSpace(animOffsetX)                → сдвиг курсора к месту анимации
+     *   печать кадра a..p                     → курсор +animIconWidth
+     *   negSpace(animIconWidth + animOffsetX) → курсор назад, туда же, где был
+     *                                           сразу после печати barChar
+     *   negSpace(barWidth + barNudge)         → обычный возврат шкалы
+     *
+     * animOffsetX настраивается в config.yml (level.anim-icon-offset-x) -
+     * им двигаешь анимацию по горизонтали, пока она не встанет ровно над баром.
+     * Сам "подъём" над строкой (чтобы было визуально НАД, а не В строке) задаётся
+     * ascent'ом кадров a..p в actionbar.json (ресурспак), здесь не трогается.
      */
     private fun buildLevelBlock(
         level: Int,
@@ -139,14 +147,14 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
         val digitFont = levelMetrics.digitFont()
 
         val iconSpacing = levelMetrics.iconSpacing()
-        // Видимая ширина группы "иконка" = ширина 'z', т.к. кадр лежит поверх неё.
+        // Видимая ширина группы "иконка" = ширина 'z'.
         val groupIconWidth = levelMetrics.levelIconWidth()
-        val levelIconWidth = levelMetrics.levelIconWidth()
-        val animIconWidth = levelMetrics.animIconWidth()
         val margin = levelMetrics.margin()
         val barNudge = levelMetrics.barNudge()
         val barWidth = levelMetrics.barWidth()
         val digitNudge = levelMetrics.digitNudge()
+        val animIconWidth = levelMetrics.animIconWidth()
+        val animOffsetX = levelMetrics.animIconOffsetX()
 
         val totalTextWidth = levelMetrics.textWidth(lvlText) + iconSpacing + groupIconWidth
         val centerOffset = (barWidth - totalTextWidth) / 2.0
@@ -157,6 +165,25 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
             // Шкала опыта.
             .append(Component.text(SpaceGlyphs.posSpace(margin + barNudge)))
             .append(Component.text(barChar.toString()).font(levelMetrics.xpBarFont()))
+
+        // Анимация получения опыта: отдельный слой НАД баром, со своим
+        // горизонтальным сдвигом (animOffsetX), курсор возвращается на место.
+        //
+        // ВАЖНО: тут нужен именно shift(), а не posSpace()/negSpace() напрямую -
+        // они внутри берут abs() от ширины и поэтому не умеют сдвигать влево
+        // через отрицательное число (posSpace(-15) двигал бы ВПРАВО на 15, а не
+        // влево). shift() сам выбирает нужное направление по знаку числа, и тогда
+        // при любом знаке animOffsetX суммарное смещение курсора после анимации
+        // (printOffset + реальная ширина кадра + returnOffset) честно равно нулю -
+        // валюты, бар и цифры уровня при анимации больше не дёргаются.
+        if (animIconChar != null) {
+            builder
+                .append(Component.text(SpaceGlyphs.shift(animOffsetX)))
+                .append(Component.text(animIconChar.toString()).font(animIconFont))
+                .append(Component.text(SpaceGlyphs.shift(-(animIconWidth + animOffsetX))))
+        }
+
+        builder
             .append(Component.text(SpaceGlyphs.negSpace(barWidth + barNudge)))
             // Группа "число уровня + иконка".
             .append(Component.text(SpaceGlyphs.negSpace(digitNudge)))
@@ -164,16 +191,8 @@ class ActionBarRenderTask(private val plugin: Main) : org.bukkit.scheduler.Bukki
             .append(glyphText(lvlText, digitFont))
             .append(Component.text(SpaceGlyphs.posSpace(iconSpacing)))
 
-        // Статичная 'z' рисуется ВСЕГДА.
+        // Статичная 'z' - рисуется как есть, без наложения кадра анимации.
         builder.append(Component.text(levelIconChar.toString()).font(levelIconFont))
-
-        // Анимация: возврат по реальной ширине 'z' и по реальной ширине кадра.
-        // Оба negSpace разные - это ключ к тому, чтобы курсор не уезжал.
-        if (animIconChar != null) {
-            builder.append(Component.text(SpaceGlyphs.negSpace(levelIconWidth)))
-            builder.append(Component.text(animIconChar.toString()).font(animIconFont))
-            builder.append(Component.text(SpaceGlyphs.negSpace(animIconWidth)))
-        }
 
         builder.append(Component.text(SpaceGlyphs.negSpace(finalReturn)))
 
